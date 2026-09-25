@@ -14,8 +14,11 @@ const { spawn, exec } = require("child_process");
 
 const PORT = Number(process.env.PORT) || 4711;
 const CLAUDE_BIN = process.env.CLAUDE_BIN || "claude";
-// z.B. MIKROFON_PERMISSION_MODE=acceptEdits, damit Claude Dateien ändern darf
-const PERMISSION_MODE = process.env.MIKROFON_PERMISSION_MODE;
+// z.B. --permission acceptEdits (oder MIKROFON_PERMISSION_MODE=acceptEdits),
+// damit Claude ohne Rückfrage Dateien ändern darf
+const permArg = process.argv.indexOf("--permission");
+const PERMISSION_MODE =
+  (permArg !== -1 && process.argv[permArg + 1]) || process.env.MIKROFON_PERMISSION_MODE;
 const WORKDIR = process.env.MIKROFON_CWD || process.cwd();
 
 let sessionId = process.env.MIKROFON_SESSION || null;
@@ -105,6 +108,7 @@ server.listen(PORT, "127.0.0.1", () => {
   const url = `http://localhost:${PORT}`;
   console.log(`🎙️  Dauer-Mikrofon läuft: ${url}`);
   console.log(`   Arbeitsordner für Claude: ${WORKDIR}`);
+  if (PERMISSION_MODE) console.log(`   Berechtigungsmodus: ${PERMISSION_MODE}`);
   console.log(`   Zum Beenden "Mikrofon stopp" sagen, Server mit Ctrl+C schliessen.`);
   const opener =
     process.platform === "darwin" ? "open" : process.platform === "win32" ? "start \"\"" : "xdg-open";

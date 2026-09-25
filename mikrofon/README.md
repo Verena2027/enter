@@ -16,7 +16,17 @@ cd /pfad/zu/deinem/projekt      # in diesem Ordner arbeitet Claude
 node /pfad/zu/enter/mikrofon/server.js
 ```
 
-Oder im Ordner dieses Repos: `npm run mikrofon`
+Oder im Ordner dieses Repos:
+
+- `npm run mikrofon`: Claude darf nur lesen und fragt bei allem anderen nicht nach, sondern lehnt ab
+- `npm run mikrofon:permission`: Claude darf ohne Rückfrage Dateien ändern (`acceptEdits`)
+
+### Mit Doppelklick starten
+
+- **Mac:** `mikrofon/Mikrofon starten.command` doppelklicken (beim ersten Mal: Rechtsklick → Öffnen)
+- **Windows:** `mikrofon/Mikrofon starten.bat` doppelklicken
+
+Beide Dateien starten `npm run mikrofon:permission`. Du kannst dir eine Verknüpfung davon auf den Desktop oder ins Dock/in die Taskleiste legen.
 
 Der Browser öffnet sich unter http://localhost:4711. Erlaube dort den Zugriff aufs Mikrofon, und dann einfach sprechen.
 

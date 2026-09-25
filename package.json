@@ -2,6 +2,7 @@
   "name": "enter",
   "private": true,
   "scripts": {
-    "mikrofon": "node mikrofon/server.js"
+    "mikrofon": "node mikrofon/server.js",
+    "mikrofon:permission": "node mikrofon/server.js --permission acceptEdits"
   }
 }
