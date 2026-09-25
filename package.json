@@ -1,0 +1,7 @@
+{
+  "name": "enter",
+  "private": true,
+  "scripts": {
+    "mikrofon": "node mikrofon/server.js"
+  }
+}

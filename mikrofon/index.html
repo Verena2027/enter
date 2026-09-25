@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dauer-Mikrofon</title>
+<style>
+  :root { --bg: #faf9f7; --fg: #1f1e1c; --muted: #6b6862; --card: #fff; --line: #e4e1db; --on: #c2410c; --you: #eef2ff; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #1b1a18; --fg: #eeece8; --muted: #a09c94; --card: #262522; --line: #3a3834; --on: #fb923c; --you: #2a2e45; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 24px 16px 80px; }
+  header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  h1 { font-size: 1.3rem; margin: 0; flex: 1; }
+  button { font: inherit; padding: 8px 16px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--fg); cursor: pointer; }
+  #status { margin: 12px 0; color: var(--muted); }
+  #status.on { color: var(--on); font-weight: 600; }
+  #live { min-height: 1.5em; color: var(--muted); font-style: italic; }
+  #log { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
+  .msg { padding: 10px 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .msg.you { background: var(--you); align-self: flex-end; max-width: 85%; }
+  .msg.err { border-color: var(--on); }
+  label { color: var(--muted); font-size: .9rem; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>🎙️ Dauer-Mikrofon für Claude</h1>
+    <label><input type="checkbox" id="speak"> Antworten vorlesen</label>
+    <button id="toggle">Start</button>
+  </header>
+  <div id="status">Mikrofon aus. Zum Beenden „Mikrofon stopp“ sagen.</div>
+  <div id="live"></div>
+  <div id="log"></div>
+</main>
+<script>
+const LANG = new URLSearchParams(location.search).get("lang") || "de-DE";
+const STOP_PHRASE = /mikrofon[\s,.!]*stop+/i;
+
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const statusEl = document.getElementById("status");
+const liveEl = document.getElementById("live");
+const logEl = document.getElementById("log");
+const toggleBtn = document.getElementById("toggle");
+const speakBox = document.getElementById("speak");
+
+let rec = null;
+let listening = false;   // soll das Mikrofon an sein?
+let paused = false;      // kurz pausiert, während vorgelesen wird
+
+function setStatus(text, on) {
+  statusEl.textContent = text;
+  statusEl.classList.toggle("on", !!on);
+  toggleBtn.textContent = on ? "Stopp" : "Start";
+}
+
+function addMsg(text, cls) {
+  const div = document.createElement("div");
+  div.className = "msg " + (cls || "");
+  div.textContent = text;
+  logEl.appendChild(div);
+  div.scrollIntoView({ behavior: "smooth", block: "end" });
+  return div;
+}
+
+function start() {
+  if (!SR) {
+    setStatus("Dieser Browser kann keine Spracherkennung. Bitte Chrome oder Edge verwenden.");
+    return;
+  }
+  listening = true;
+  rec = new SR();
+  rec.lang = LANG;
+  rec.continuous = true;
+  rec.interimResults = true;
+
+  rec.onresult = (e) => {
+    let interim = "";
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const text = e.results[i][0].transcript.trim();
+      if (!e.results[i].isFinal) { interim += text + " "; continue; }
+      if (!text) continue;
+      if (STOP_PHRASE.test(text)) {
+        const before = text.split(STOP_PHRASE)[0].trim();
+        if (before) send(before);
+        stop();
+        return;
+      }
+      send(text);
+    }
+    liveEl.textContent = interim;
+  };
+
+  rec.onerror = (e) => {
+    if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+      listening = false;
+      setStatus("Kein Zugriff aufs Mikrofon. Bitte im Browser erlauben und neu starten.");
+    }
+  };
+
+  // Der Browser beendet die Erkennung nach Pausen von selbst – dann einfach neu starten
+  rec.onend = () => {
+    if (listening && !paused) {
+      try { rec.start(); } catch {}
+    }
+  };
+
+  rec.start();
+  setStatus("● Mikrofon an – ich höre zu. „Mikrofon stopp“ beendet.", true);
+}
+
+function stop() {
+  listening = false;
+  liveEl.textContent = "";
+  if (rec) rec.stop();
+  setStatus("Mikrofon aus.");
+  fetch("/stop", { method: "POST" }).catch(() => {});
+}
+
+async function send(text) {
+  addMsg(text, "you");
+  const pending = addMsg("Claude denkt nach …");
+  try {
+    const res = await fetch("/ask", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || res.statusText);
+    pending.textContent = data.answer || "(keine Antwort)";
+    if (speakBox.checked) say(data.answer);
+  } catch (e) {
+    pending.textContent = "Fehler: " + e.message;
+    pending.classList.add("err");
+  }
+}
+
+// Vorlesen – dabei das Mikrofon pausieren, damit es sich nicht selbst hört
+function say(text) {
+  if (!text || !window.speechSynthesis) return;
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = LANG;
+  u.onstart = () => { paused = true; if (rec) rec.stop(); };
+  u.onend = u.onerror = () => {
+    paused = false;
+    if (listening && rec) { try { rec.start(); } catch {} }
+  };
+  speechSynthesis.speak(u);
+}
+
+toggleBtn.onclick = () => (listening ? stop() : start());
+start();
+</script>
+</body>
+</html>
